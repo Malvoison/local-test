@@ -1,0 +1,8 @@
+{
+  "copilot_settings": {
+    "python": {
+      "lsp": "pyright",
+      "type_checking": "strict"
+    }
+  }
+}
