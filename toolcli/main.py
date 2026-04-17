@@ -6,22 +6,30 @@ import argparse
 import json
 import logging
 from collections.abc import Sequence
+from typing import Any
 
 from .config import ValidationError, load_settings, validate_settings
-from .ollama_client import OllamaClient, OllamaClientError
+from .ollama_client import OllamaClient, OllamaClientError, extract_assistant_content
 from .orchestrator import Orchestrator
-from .schemas import RuntimeOptions
+from .schemas import OrchestrationResult, RuntimeOptions
 from .tool_registry import ToolRegistry
 from .ui import AppUI
 
 LOGGER = logging.getLogger(__name__)
+
+EXIT_OK = 0
+EXIT_FATAL = 1
+EXIT_USAGE_ERROR = 2
+EXIT_CONFIG_ERROR = 3
+EXIT_OLLAMA_ERROR = 4
+EXIT_PROVIDER_ERROR = 5
 
 
 def build_parser() -> argparse.ArgumentParser:
     """Create the command-line parser for the placeholder CLI."""
     parser = argparse.ArgumentParser(
         prog="toolcli",
-        description="Placeholder CLI scaffold for Ollama-based tool calling.",
+        description="CLI for Ollama-based tool calling.",
     )
     parser.add_argument("prompt", nargs="*", help="Prompt text to send to the application.")
     parser.add_argument("--model", help="Override the configured Ollama model.")
@@ -30,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         dest="json_output",
-        help="Print the placeholder response as JSON.",
+        help="Print the response as JSON.",
     )
     parser.add_argument(
         "--verbose",
@@ -40,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-tools",
         action="store_true",
-        help="Disable tools in the resolved runtime options.",
+        help="Disable tools and send the prompt directly to Ollama.",
     )
     parser.add_argument(
         "--timeout",
@@ -51,11 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-tool-rounds",
         type=int,
         default=3,
-        help="Maximum placeholder tool rounds to report.",
+        help="Maximum tool rounds to allow.",
     )
     parser.add_argument(
         "--system-prompt",
-        help="Optional system prompt to carry in the placeholder runtime options.",
+        help="Optional system prompt to include in the request.",
     )
     parser.add_argument(
         "--show-tools",
@@ -103,6 +111,55 @@ def resolve_runtime_options(args: argparse.Namespace, settings=None) -> RuntimeO
     )
 
 
+def serialize_result(result: OrchestrationResult) -> dict[str, Any]:
+    """Return the public JSON payload for a completed run."""
+    tools_used = [
+        {
+            "name": activity.tool_name,
+            "arguments": activity.arguments,
+            "result": activity.result,
+            "success": activity.ok,
+            "error": activity.error,
+        }
+        for activity in result.tool_activities
+    ]
+    return {
+        "success": result.success,
+        "model": result.model,
+        "prompt": result.prompt,
+        "tools_used": tools_used,
+        "final_answer": result.final_answer,
+        "errors": result.errors,
+    }
+
+
+def determine_exit_code(result: OrchestrationResult) -> int:
+    """Map orchestration outcomes to CLI exit codes."""
+    if result.success:
+        return EXIT_OK
+    if any(error.get("type") == "execution_error" for error in result.errors):
+        return EXIT_PROVIDER_ERROR
+    return EXIT_FATAL
+
+
+def run_without_tools(client: OllamaClient, options: RuntimeOptions) -> OrchestrationResult:
+    """Send a direct non-tool request to Ollama."""
+    response = client.simple_chat(
+        options.prompt,
+        system_prompt=options.system_prompt,
+        timeout=options.request_timeout,
+    )
+    return OrchestrationResult(
+        prompt=options.prompt,
+        model=options.ollama_model,
+        tools_used=[],
+        final_answer=extract_assistant_content(response),
+        errors=[],
+        success=True,
+        tool_activities=[],
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse CLI arguments and send a simple chat request to Ollama."""
     parser = build_parser()
@@ -113,7 +170,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         base_settings = load_settings()
         runtime_options = resolve_runtime_options(args, settings=base_settings)
     except ValidationError as exc:
-        parser.exit(status=2, message=f"Configuration error: {exc}\n")
+        parser.exit(status=EXIT_CONFIG_ERROR, message=f"Configuration error: {exc}\n")
 
     configure_logging(runtime_options.log_level)
     LOGGER.debug(
@@ -146,30 +203,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.show_tools:
         tool_payload = registry.list_for_model()
         if runtime_options.json_output:
-            print(json.dumps(tool_payload, indent=2))
+            print(json.dumps({"tools": tool_payload}, indent=2))
         else:
             for tool in tool_payload:
                 function = tool["function"]
                 print(f"{function['name']}: {function['description']}")
-        return 0
+        return EXIT_OK
 
     try:
-        result = orchestrator.run(runtime_options)
+        result = run_without_tools(client, runtime_options) if not runtime_options.tools_enabled else orchestrator.run(runtime_options)
     except OllamaClientError as exc:
         logging.getLogger(__name__).error("%s", exc)
-        parser.exit(status=1, message=f"Error: {exc}\n")
+        parser.exit(status=EXIT_OLLAMA_ERROR, message=f"Error: {exc}\n")
 
+    payload = serialize_result(result)
     if runtime_options.json_output:
-        print(json.dumps(result.model_dump(mode="json"), indent=2))
+        print(json.dumps(payload, indent=2))
     else:
-        if args.verbose and result.tool_activities:
-            for activity in result.tool_activities:
-                status = "ok" if activity.ok else "error"
-                print(f"tool {activity.tool_name} [{status}] args={activity.arguments}")
-                if activity.error is not None:
-                    print(f"  error: {activity.error['message']}")
-        ui.print_response(
-            result.final_answer,
-            result.model_dump(mode="json"),
-        )
-    return 0 if result.success else 1
+        if args.verbose:
+            ui.print_tool_trace(payload["tools_used"])
+        ui.print_response(result.final_answer, payload)
+        if result.errors:
+            ui.print_errors(result.errors)
+    return determine_exit_code(result)

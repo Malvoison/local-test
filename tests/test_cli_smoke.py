@@ -44,7 +44,18 @@ def test_main_supports_json_output(capsys, monkeypatch: pytest.MonkeyPatch) -> N
     """Render assistant output as JSON."""
     monkeypatch.setattr(
         "toolcli.main.Orchestrator.run",
-        lambda self, options: make_result(final_answer="json reply"),
+        lambda self, options: make_result(
+            final_answer="json reply",
+            tool_activities=[
+                ToolActivity(
+                    tool_name="get_current_time",
+                    arguments={"timezone": "UTC"},
+                    ok=True,
+                    result={"timezone": "UTC"},
+                    error=None,
+                )
+            ],
+        ),
     )
 
     exit_code = main(["hello", "--json"])
@@ -55,21 +66,33 @@ def test_main_supports_json_output(capsys, monkeypatch: pytest.MonkeyPatch) -> N
     assert exit_code == 0
     assert payload["final_answer"] == "json reply"
     assert payload["success"] is True
+    assert payload["prompt"] == "hello"
+    assert payload["model"] == "test-model"
+    assert payload["tools_used"] == [
+        {
+            "name": "get_current_time",
+            "arguments": {"timezone": "UTC"},
+            "result": {"timezone": "UTC"},
+            "success": True,
+            "error": None,
+        }
+    ]
+    assert payload["errors"] == []
 
 
 def test_main_applies_cli_overrides(capsys, monkeypatch: pytest.MonkeyPatch) -> None:
     """Apply CLI runtime overrides in the Ollama request."""
     recorded: dict[str, object] = {}
 
-    def fake_run(self, options):
-        recorded["model"] = options.ollama_model
-        recorded["base_url"] = options.ollama_base_url
-        recorded["prompt"] = options.prompt
-        recorded["system_prompt"] = options.system_prompt
-        recorded["timeout"] = options.request_timeout
-        return make_result(final_answer="override reply")
+    def fake_simple_chat(self, prompt: str, *, system_prompt: str | None = None, timeout: float | None = None):
+        recorded["model"] = self.model
+        recorded["base_url"] = self.base_url
+        recorded["prompt"] = prompt
+        recorded["system_prompt"] = system_prompt
+        recorded["timeout"] = timeout
+        return {"message": {"role": "assistant", "content": "override reply"}}
 
-    monkeypatch.setattr("toolcli.main.Orchestrator.run", fake_run)
+    monkeypatch.setattr("toolcli.main.OllamaClient.simple_chat", fake_simple_chat)
 
     exit_code = main(
         [
@@ -123,7 +146,8 @@ def test_main_verbose_mode_enables_debug_logging(capsys, monkeypatch: pytest.Mon
 
     assert exit_code == 0
     assert "debug reply" in captured.out
-    assert "tool get_current_news [ok]" in captured.out
+    assert "Tool Trace" in captured.out
+    assert "get_current_news" in captured.out
     assert "DEBUG toolcli.main: Resolved runtime options" in captured.err
 
 
@@ -139,7 +163,7 @@ def test_main_exits_nonzero_on_client_error(monkeypatch: pytest.MonkeyPatch, cap
 
     captured = capsys.readouterr()
 
-    assert exc_info.value.code == 1
+    assert exc_info.value.code == 4
     assert "Error: Could not connect to Ollama." in captured.err
 
 
@@ -152,3 +176,50 @@ def test_show_tools_prints_registered_tools_and_exits(capsys) -> None:
     assert exit_code == 0
     assert "get_current_weather" in captured.out
     assert "convert_currency" in captured.out
+
+
+def test_main_returns_nonzero_on_provider_failure(capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Return a provider-specific nonzero exit code when tool execution fails."""
+    monkeypatch.setattr(
+        "toolcli.main.Orchestrator.run",
+        lambda self, options: make_result(
+            success=False,
+            final_answer="I could not complete that request.",
+            errors=[{"type": "execution_error", "message": "News lookup failed.", "details": []}],
+        ),
+    )
+
+    exit_code = main(["hello"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 5
+    assert "I could not complete that request." in captured.out
+    assert "News lookup failed." in captured.out
+
+
+def test_main_no_tools_uses_direct_ollama_path(capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bypass the orchestrator and tools when --no-tools is set."""
+    recorded: dict[str, object] = {}
+
+    def fail_run(self, options):
+        raise AssertionError("orchestrator should not run")
+
+    def fake_simple_chat(self, prompt: str, *, system_prompt: str | None = None, timeout: float | None = None):
+        recorded["prompt"] = prompt
+        recorded["system_prompt"] = system_prompt
+        recorded["timeout"] = timeout
+        return {"message": {"role": "assistant", "content": "direct reply"}}
+
+    monkeypatch.setattr("toolcli.main.Orchestrator.run", fail_run)
+    monkeypatch.setattr("toolcli.main.OllamaClient.simple_chat", fake_simple_chat)
+
+    exit_code = main(["hello", "--no-tools", "--json"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert recorded == {"prompt": "hello", "system_prompt": None, "timeout": 30.0}
+    assert payload["tools_used"] == []
+    assert payload["final_answer"] == "direct reply"
