@@ -54,6 +54,14 @@ The application uses environment-backed settings. You can configure it via a `.e
 
 ## Development Conventions
 
+### Beads & Parallel Workflows
+All work in this repository is managed through **Beads** and MUST be performed in parallel git worktrees located at `.worktrees/<issue-id>`.
+
+- **NEVER** modify source code in the main repository root.
+- **ALWAYS** check `AGENTS.md` for the mandatory Beads issue-tracking and worktree workflow.
+- **ALWAYS** claim an issue in Beads before starting work.
+- **ALWAYS** sync the Beads state (`bd sync && git push`) when finishing a session.
+
 ### Coding Style
 - **Typing**: Rigorous use of Python 3.11+ type hints is required.
 - **Naming**: Follow PEP 8: `snake_case` for functions/variables, `PascalCase` for classes, and `UPPER_SNAKE_CASE` for constants.

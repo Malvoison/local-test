@@ -43,28 +43,52 @@
 - Do not hardcode secrets. Set `NEWS_API_KEY` in the environment when testing news functionality.
 - Treat external HTTP APIs and Ollama as runtime dependencies; handle failures with clear terminal errors.
 
+## Beads Issue Tracking (MANDATORY WORKFLOW)
+
+Beads is the single source of truth for all tasks in this repository. It is designed for parallel agent collaboration, deterministic tracking via hash-based IDs, and offline-first semantic dependencies. All agents (Codex, Copilot, Gemini) MUST use Beads to find, claim, and track work.
+
+### Why and When to Use Beads
+- **Why:** To prevent duplicate work, maintain a clear audit trail, and enable seamless handoffs between agents and human collaborators.
+- **When:** 
+  - **Start of Session:** Find available work that isn't blocked or claimed.
+  - **During Work:** Claim an issue, create new issues for discovered bugs/tasks, and update progress.
+  - **End of Session:** Ensure all task state is committed and pushed.
+
+### How to Use Beads (Core Commands)
+- **Find Ready Work:** `bd ready --json` (Lists issues with no blockers and no assignee).
+- **Claim Work:** `bd update <issue-id> --status in_progress --assignee <agent_name>`
+- **Create Discovered Work:** `bd create "Title" -t <type> -p <priority> --deps discovered-from:<parent-id>`
+- **Close Work:** `bd close <issue-id> --reason "Completed"`
+
+### Parallel Execution & Worktrees
+**CRITICAL RULE:** Agents MUST NEVER modify source code directly in the main repository root. To enable parallel work and clean PR isolation, all tasks must be executed in a dedicated git worktree.
+
+1. **Create Worktree:** `bd worktree create .worktrees/<issue-id> --branch <branch-name>`
+2. **Navigate to Worktree:** `cd .worktrees/<issue-id>`
+3. **Execute Task:** Perform all coding, testing, and committing within this isolated directory.
+4. **Push Work:** Commit and push the branch from within the worktree.
+5. **Clean Up:** Once the PR is merged or the task is complete, remove the worktree: `bd worktree remove .worktrees/<issue-id>`.
+
 ## Landing the Plane (Session Completion)
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until all changes are pushed and the Beads state is synced.
 
 **MANDATORY WORKFLOW:**
 
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
+1. **File issues for remaining work** - Create issues for anything that needs follow-up.
+2. **Commit and Push from Worktree** - Ensure all code changes in your worktree are committed and the branch is pushed to the remote.
+3. **Update issue status** - Close finished work in Beads, update in-progress items.
+4. **Sync Beads Database** - In the main repository root:
    ```bash
-   git pull --rebase
    bd sync
    git push
    git status  # MUST show "up to date with origin"
    ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+5. **Clean up** - Remove the worktree if the task is finished: `bd worktree remove .worktrees/<issue-id>`.
+6. **Verify** - All changes committed AND pushed, Beads state synced.
+7. **Hand off** - Provide context for next session.
 
 **CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+- Work is NOT complete until `git push` (for both code and Beads state) succeeds.
+- NEVER stop before pushing - that leaves work stranded locally.
+- NEVER modify code in the main repo root; ALWAYS use `.worktrees/`.

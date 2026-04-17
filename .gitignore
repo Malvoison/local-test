@@ -25,6 +25,7 @@ dist/
 .direnv/
 .envrc
 .codex
+.worktrees/
 
 # Editor and OS noise
 .DS_Store
