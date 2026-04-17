@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 import pytest
 
 from toolcli.orchestrator import Orchestrator
+from toolcli.providers.currency import ExchangeRateQuote
 from toolcli.schemas import RuntimeOptions, ToolDefinition
 from toolcli.tool_registry import ToolRegistry
 from toolcli.tools.news import NewsArguments
@@ -94,8 +96,16 @@ def test_orchestrator_single_tool_called() -> None:
     assert len(client.calls) == 2
 
 
-def test_orchestrator_multiple_tool_calls() -> None:
+def test_orchestrator_multiple_tool_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     """Execute multiple tool calls from one model turn."""
+    monkeypatch.setattr(
+        "toolcli.tools.currency.get_exchange_rate",
+        lambda from_currency, to_currency: ExchangeRateQuote(
+            from_currency=from_currency,
+            to_currency=to_currency,
+            rate=Decimal("0.92"),
+        ),
+    )
     client = FakeClient(
         [
             {
@@ -126,6 +136,53 @@ def test_orchestrator_multiple_tool_calls() -> None:
     assert result.success is True
     assert result.tools_used == ["get_current_time", "convert_currency"]
     assert len(result.tool_activities) == 2
+
+
+def test_orchestrator_weather_tool_called(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Execute the weather tool through the orchestration loop."""
+
+    def fake_get_current_weather_for_city(city: str, unit: str):
+        class Location:
+            resolved_name = "Chicago, Illinois, United States"
+            latitude = 41.8781
+            longitude = -87.6298
+
+        class Weather:
+            temperature = 72.0
+            unit = "F"
+            description = "Clear sky"
+
+        return Location(), Weather()
+
+    monkeypatch.setattr(
+        "toolcli.tools.weather.get_current_weather_for_city",
+        fake_get_current_weather_for_city,
+    )
+    client = FakeClient(
+        [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "checking weather",
+                    "tool_calls": [
+                        {
+                            "function": {
+                                "name": "get_current_weather",
+                                "arguments": {"city": "Chicago", "unit": "fahrenheit"},
+                            }
+                        }
+                    ],
+                }
+            },
+            {"message": {"role": "assistant", "content": "final answer"}},
+        ]
+    )
+
+    result = Orchestrator(client=client, registry=ToolRegistry.with_builtin_tools()).run(make_options())
+
+    assert result.success is True
+    assert result.tools_used == ["get_current_weather"]
+    assert result.tool_activities[0].result["resolved_location"] == "Chicago, Illinois, United States"
 
 
 def test_orchestrator_unknown_tool() -> None:

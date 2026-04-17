@@ -24,15 +24,32 @@ def test_registry_returns_none_for_unknown_tool() -> None:
     assert registry.get("missing_tool") is None
 
 
-def test_registry_valid_execution() -> None:
+def test_registry_valid_execution(monkeypatch: pytest.MonkeyPatch) -> None:
     """Execute a registered tool with valid arguments."""
+    def fake_get_current_weather_for_city(city: str, unit: str):
+        class Location:
+            resolved_name = "Chicago, Illinois, United States"
+            latitude = 41.8781
+            longitude = -87.6298
+
+        class Weather:
+            temperature = 19.4
+            unit = "C"
+            description = "Partly cloudy"
+
+        return Location(), Weather()
+
+    monkeypatch.setattr(
+        "toolcli.tools.weather.get_current_weather_for_city",
+        fake_get_current_weather_for_city,
+    )
     registry = ToolRegistry.with_builtin_tools()
 
     result = registry.execute("get_current_weather", {"city": "Chicago", "unit": "celsius"})
 
     assert result.ok is True
     assert result.error is None
-    assert result.result["city"] == "Chicago"
+    assert result.result["resolved_location"] == "Chicago, Illinois, United States"
 
 
 def test_registry_invalid_arguments_return_structured_error() -> None:

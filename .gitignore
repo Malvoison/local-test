@@ -21,5 +21,10 @@ dist/
 # Local environment files
 .env
 
+# Local environment tools
+.direnv/
+.envrc
+.codex
+
 # Editor and OS noise
 .DS_Store
