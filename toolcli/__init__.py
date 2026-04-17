@@ -1,4 +1,4 @@
-"""Scaffold package for a maintainable Ollama tool-calling CLI."""
+"""Public package exports for the tool-calling CLI."""
 
 from .config import Settings, load_settings
 

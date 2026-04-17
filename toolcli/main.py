@@ -1,4 +1,4 @@
-"""Primary CLI entry point for the scaffolded application."""
+"""Primary CLI entry point."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ EXIT_PROVIDER_ERROR = 5
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Create the command-line parser for the placeholder CLI."""
+    """Create the command-line parser."""
     parser = argparse.ArgumentParser(
         prog="toolcli",
         description="CLI for Ollama-based tool calling.",

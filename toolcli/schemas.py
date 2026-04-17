@@ -1,4 +1,4 @@
-"""Shared schemas for the CLI scaffold."""
+"""Shared schemas for CLI configuration, tools, and orchestration."""
 
 from __future__ import annotations
 
@@ -6,16 +6,6 @@ from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-
-
-class ToolParameter(BaseModel):
-    """Describe a single tool parameter."""
-
-    model_config = ConfigDict(frozen=True)
-
-    name: str
-    description: str
-    required: bool = True
 
 
 class ToolDefinition(BaseModel):
@@ -103,15 +93,6 @@ class ToolActivity(BaseModel):
     ok: bool
     result: Any = None
     error: dict[str, Any] | None = None
-
-
-class PlaceholderResponse(BaseModel):
-    """Represent a placeholder response returned by the scaffold."""
-
-    model_config = ConfigDict(frozen=True)
-
-    content: str
-    payload: dict[str, object]
 
 
 class OrchestrationResult(BaseModel):

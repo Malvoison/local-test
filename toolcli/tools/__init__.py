@@ -1,4 +1,4 @@
-"""Builtin tool definitions for the scaffold."""
+"""Builtin tool definitions."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from .weather import get_tool_definition as get_weather_tool
 
 
 def load_builtin_tools() -> list[ToolDefinition]:
-    """Return the builtin placeholder tool definitions."""
+    """Return the builtin tool definitions."""
     return [
         get_weather_tool(),
         get_news_tool(),

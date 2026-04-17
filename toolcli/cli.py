@@ -1,4 +1,4 @@
-"""Compatibility wrapper for older imports."""
+"""Compatibility exports for code that still imports ``toolcli.cli``."""
 
 from .main import build_parser, main
 

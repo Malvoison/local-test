@@ -1,4 +1,4 @@
-"""Compatibility wrapper for the original prototype script."""
+"""Legacy script entry point that forwards to ``toolcli.main``."""
 
 from toolcli.main import main
 

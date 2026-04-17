@@ -46,5 +46,5 @@ class ToolRegistry:
 
     @classmethod
     def with_builtin_tools(cls) -> "ToolRegistry":
-        """Create a registry preloaded with the scaffold's builtin tools."""
+        """Create a registry preloaded with the builtin tools."""
         return cls(load_builtin_tools())

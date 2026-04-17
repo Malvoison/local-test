@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "toolcli"
 version = "0.1.0"
 description = "Maintainable scaffold for an Ollama tool-calling CLI."
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.7",
@@ -24,3 +25,4 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-ra"
