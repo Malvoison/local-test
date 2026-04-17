@@ -19,17 +19,58 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -e ".[dev]"
+export NEWS_API_KEY=your_newsapi_key
 ```
+
+You can also place `NEWS_API_KEY=your_newsapi_key` in `.env`.
 
 ## Run
 ```bash
 toolcli "What time is it in America/Chicago?"
 toolcli "Convert 25 USD to EUR"
 toolcli "What's the weather in Chicago right now?"
+toolcli "Top headlines right now"
+toolcli "Latest news about AI"
 python3 -m toolcli --show-tools
 ```
 
 ## Usage Examples
+News tool for top headlines:
+```json
+{
+  "name": "get_current_news",
+  "arguments": {}
+}
+```
+
+News tool for a topic search:
+```json
+{
+  "name": "get_current_news",
+  "arguments": {
+    "topic": "ai"
+  }
+}
+```
+
+Successful result shape:
+```json
+{
+  "topic": "ai",
+  "headlines": [
+    {
+      "title": "AI Headline",
+      "source": "Tech Source",
+      "url": "https://example.test/story",
+      "published_at": "2026-04-16T12:00:00Z",
+      "description": "Story description"
+    }
+  ],
+  "count": 1,
+  "summary": "Here are 1 headlines about ai: AI Headline."
+}
+```
+
 Weather tool:
 ```json
 {
@@ -114,3 +155,6 @@ python3 prototype.py --help
 The registry and orchestrator stay generic: they validate tool arguments, execute tool functions, and pass structured results back into the model loop. Provider-specific HTTP logic lives under `toolcli/providers/`, so tools can focus on validation, normalization, and shaping readable summaries without embedding networking code into orchestration layers.
 
 Weather provider note: weather geocoding uses the Open-Meteo geocoding API and current conditions use the Open-Meteo forecast API.
+News provider note: news lookups use NewsAPI for both US top headlines and topic-based article search.
+
+Missing `NEWS_API_KEY` behavior: in normal CLI mode the run fails with a readable tool error in the assistant/orchestrator result path, and in `--json` mode the structured payload includes an `execution_error` entry with the missing-key message.

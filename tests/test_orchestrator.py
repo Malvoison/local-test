@@ -69,8 +69,21 @@ def test_orchestrator_no_tool_called() -> None:
     assert result.tools_used == []
 
 
-def test_orchestrator_single_tool_called() -> None:
+def test_orchestrator_single_tool_called(monkeypatch: pytest.MonkeyPatch) -> None:
     """Execute one tool call and re-query Ollama."""
+    monkeypatch.setattr(
+        "toolcli.tools.news.get_current_news_from_provider",
+        lambda topic=None: [],
+    )
+    monkeypatch.setattr(
+        "toolcli.tools.news.get_current_news",
+        lambda topic=None: {
+            "topic": topic,
+            "headlines": [{"title": "AI Headline", "source": "Tech Source"}],
+            "count": 1,
+            "summary": "Here are 1 headlines about ai: AI Headline.",
+        },
+    )
     client = FakeClient(
         [
             {
